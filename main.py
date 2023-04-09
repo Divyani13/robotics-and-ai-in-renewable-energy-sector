@@ -8,6 +8,137 @@ import numpy as np
 import adafruit_ina219
 #import robotics_library as rl
 
+# define the function to collect energy data
+def collect_energy_data(panel_id):
+    #collecting energy data from the panel
+    i2c_bus = board.I2C()
+    sensor = adafruit_ina219.INA219(i2c_bus)
+    sensor.gain = adafruit_ina219.GAIN_AUTO
+
+    voltage = sensor.bus_voltage
+    current = sensor.current
+    power = voltage * current
+    timestamp = time.time() #record timestamp of data collection
+
+    # save energy data to database or file
+    with open(f"panel_{panel_id}_energy_data.txt", "a") as f:
+        f.write(f"{timestamp}, {voltage}, {current}, {power}\n")
+
+    # calculate efficiency and energy production
+    panel_area = 1.5  # assume panel area of 1.5 square meters
+    irradiance = 1000  # assume solar irradiance of 1000 watts per square meter
+    efficiency = power / (panel_area * irradiance) * 100  # calculate efficiency
+    energy_production = power * 3600 / 1000  # calculate energy production in watt-hours per hour
+
+    # save efficiency and energy production data to database or file
+    with open(f"panel_{panel_id}_energy_stats.txt", "a") as f:
+        f.write(f"{timestamp}, {efficiency:.2f}%, {energy_production:.2f} Wh/h\n")
+
+
+# define the function to send an alert
+def send_alert(source, message):
+    #sending an alert message to the maintanence team
+    # simulate sending an alert
+    print(f"ALERT: {source}: {message}")
+
+#A sun tracker typically uses sensors and motors to adjust the position of a solar panel to ensure that it is facing the sun at the optimal angle for maximum energy production.
+
+def get_panel_azimuth_and_altitude(latitude, longitude):
+    # get current date and time
+    now = datetime.datetime.now()
+
+    # calculate the day of year
+    doy = now.timetuple().tm_yday
+
+    # convert latitude and longitude to radians
+    lat_rad = math.radians(latitude)
+    long_rad = math.radians(longitude)
+
+    # calculate the solar declination angle
+    declination = -23.45 * math.cos(2 * math.pi / 365 * (doy + 10))
+
+    # calculate the solar hour angle
+    hour_angle = math.radians(15 * (now.hour - 12) + now.minute / 4 - longitude)
+
+    # calculate the altitude angle
+    altitude = math.asin(math.sin(lat_rad) * math.sin(declination) + math.cos(lat_rad) * math.cos(declination) * math.cos(hour_angle))
+
+    # calculate the azimuth angle
+    azimuth = math.atan2(-math.cos(declination) * math.sin(hour_angle), math.sin(altitude) * math.sin(lat_rad) - math.cos(altitude) * math.cos(lat_rad) * math.cos(hour_angle))
+    azimuth = math.degrees(azimuth)
+    if azimuth < 0:
+        azimuth += 360
+
+    # return the panel_azimuth and panel_altitude values
+    panel_azimuth = azimuth
+    panel_altitude = math.degrees(altitude)
+
+    return panel_azimuth, panel_altitude
+
+def get_sun_azimuth_and_altitude(latitude, longitude):
+    # get current date and time
+    now = datetime.datetime.now()
+
+    # calculate the day of year
+    doy = now.timetuple().tm_yday
+
+    # convert latitude and longitude to radians
+    lat_rad = math.radians(latitude)
+    long_rad = math.radians(longitude)
+
+    # calculate the solar declination angle
+    declination = -23.45 * math.cos(2 * math.pi / 365 * (doy + 10))
+
+    # calculate the solar hour angle
+    hour_angle = math.radians(15 * (now.hour - 12) + now.minute / 4 - longitude)
+
+    # calculate the altitude angle
+    altitude = math.asin(math.sin(lat_rad) * math.sin(declination) + math.cos(lat_rad) * math.cos(declination) * math.cos(hour_angle))
+
+    # calculate the azimuth angle
+    azimuth = math.atan2(-math.cos(declination) * math.sin(hour_angle), math.sin(altitude) * math.sin(lat_rad) - math.cos(altitude) * math.cos(lat_rad) * math.cos(hour_angle))
+    azimuth = math.degrees(azimuth)
+    if azimuth < 0:
+        azimuth += 360
+
+    # return the sun_azimuth and sun_altitude values
+    sun_azimuth = azimuth
+    sun_altitude = math.degrees(altitude)
+
+    return sun_azimuth, sun_altitude
+
+def get_panel_angle(panel_id, latitude, longitude):
+    # get the panel azimuth and altitude
+    panel_azimuth, panel_altitude = get_panel_azimuth_and_altitude(latitude, longitude)
+
+    # get the sun azimuth and altitude
+    sun_azimuth, sun_altitude = get_sun_azimuth_and_altitude(latitude,longitude)
+    # Calculate the angle between the sun and the panel
+    angle = math.degrees(math.atan2(math.sin(sun_azimuth - panel_azimuth),
+                                    math.cos(sun_altitude) * math.tan(panel_altitude) - math.sin(sun_altitude) * math.cos(sun_azimuth - panel_azimuth)))
+
+    # Round the angle to two decimal places
+    angle = round(angle, 2)
+
+    return angle
+
+# Function to adjust the angle of the solar panel based on the position of the sun
+def adjust_panel_angle(panel_id,latitude,longitude):
+
+    panel_angle = get_panel_angle(panel_id,latitude,longitude)
+
+    # Determine the position of the panel based on the angle
+    if panel_angle < -45:
+        panel_position = "facing East"
+    elif panel_angle >= -45 and panel_angle < 45:
+        panel_position = "facing South"
+    else:
+        panel_position = "facing West"
+
+    print(f"New Panel Angle is {panel_angle} , New panel position is {panel_position} ")
+    print(f"Panel {panel_id} angle has been changed to {panel_angle} degrees")
+
+
 # define the function to check the state of the solar panels
 def check_panel(panel_id):
     # get the current state of the solar panels
@@ -141,139 +272,6 @@ def monitor_environment(panel_id):
         check_panel(panel_id)
     else :
         send_alert("Environment"," Weather conditions are not good to monitor the solar panels")
-
-# define the function to collect energy data
-def collect_energy_data(panel_id):
-    #collecting energy data from the panel
-    i2c_bus = board.I2C()
-    sensor = adafruit_ina219.INA219(i2c_bus)
-    sensor.gain = adafruit_ina219.GAIN_AUTO
-
-    voltage = sensor.bus_voltage
-    current = sensor.current
-    power = voltage * current
-    timestamp = time.time() #record timestamp of data collection
-
-    # save energy data to database or file
-    with open(f"panel_{panel_id}_energy_data.txt", "a") as f:
-        f.write(f"{timestamp}, {voltage}, {current}, {power}\n")
-
-    # calculate efficiency and energy production
-    panel_area = 1.5  # assume panel area of 1.5 square meters
-    irradiance = 1000  # assume solar irradiance of 1000 watts per square meter
-    efficiency = power / (panel_area * irradiance) * 100  # calculate efficiency
-    energy_production = power * 3600 / 1000  # calculate energy production in watt-hours per hour
-
-    # save efficiency and energy production data to database or file
-    with open(f"panel_{panel_id}_energy_stats.txt", "a") as f:
-        f.write(f"{timestamp}, {efficiency:.2f}%, {energy_production:.2f} Wh/h\n")
-
-
-# define the function to send an alert
-def send_alert(source, message):
-    #sending an alert message to the maintanence team
-    # simulate sending an alert
-    print(f"ALERT: {source}: {message}")
-
-#A sun tracker typically uses sensors and motors to adjust the position of a solar panel to ensure that it is facing the sun at the optimal angle for maximum energy production.
-
-def get_panel_azimuth_and_altitude(latitude, longitude):
-    # get current date and time
-    now = datetime.datetime.now()
-
-    # calculate the day of year
-    doy = now.timetuple().tm_yday
-
-    # convert latitude and longitude to radians
-    lat_rad = math.radians(latitude)
-    long_rad = math.radians(longitude)
-
-    # calculate the solar declination angle
-    declination = -23.45 * math.cos(2 * math.pi / 365 * (doy + 10))
-
-    # calculate the solar hour angle
-    hour_angle = math.radians(15 * (now.hour - 12) + now.minute / 4 - longitude)
-
-    # calculate the altitude angle
-    altitude = math.asin(math.sin(lat_rad) * math.sin(declination) + math.cos(lat_rad) * math.cos(declination) * math.cos(hour_angle))
-
-    # calculate the azimuth angle
-    azimuth = math.atan2(-math.cos(declination) * math.sin(hour_angle), math.sin(altitude) * math.sin(lat_rad) - math.cos(altitude) * math.cos(lat_rad) * math.cos(hour_angle))
-    azimuth = math.degrees(azimuth)
-    if azimuth < 0:
-        azimuth += 360
-
-    # return the panel_azimuth and panel_altitude values
-    panel_azimuth = azimuth
-    panel_altitude = math.degrees(altitude)
-
-    return panel_azimuth, panel_altitude
-
-def get_sun_azimuth_and_altitude(latitude, longitude):
-    # get current date and time
-    now = datetime.datetime.now()
-
-    # calculate the day of year
-    doy = now.timetuple().tm_yday
-
-    # convert latitude and longitude to radians
-    lat_rad = math.radians(latitude)
-    long_rad = math.radians(longitude)
-
-    # calculate the solar declination angle
-    declination = -23.45 * math.cos(2 * math.pi / 365 * (doy + 10))
-
-    # calculate the solar hour angle
-    hour_angle = math.radians(15 * (now.hour - 12) + now.minute / 4 - longitude)
-
-    # calculate the altitude angle
-    altitude = math.asin(math.sin(lat_rad) * math.sin(declination) + math.cos(lat_rad) * math.cos(declination) * math.cos(hour_angle))
-
-    # calculate the azimuth angle
-    azimuth = math.atan2(-math.cos(declination) * math.sin(hour_angle), math.sin(altitude) * math.sin(lat_rad) - math.cos(altitude) * math.cos(lat_rad) * math.cos(hour_angle))
-    azimuth = math.degrees(azimuth)
-    if azimuth < 0:
-        azimuth += 360
-
-    # return the sun_azimuth and sun_altitude values
-    sun_azimuth = azimuth
-    sun_altitude = math.degrees(altitude)
-
-    return sun_azimuth, sun_altitude
-
-def get_panel_angle(panel_id, latitude, longitude):
-    # get the panel azimuth and altitude
-    panel_azimuth, panel_altitude = get_panel_azimuth_and_altitude(latitude, longitude)
-
-    # get the sun azimuth and altitude
-    sun_azimuth, sun_altitude = get_sun_azimuth_and_altitude(latitude,longitude)
-    # Calculate the angle between the sun and the panel
-    angle = math.degrees(math.atan2(math.sin(sun_azimuth - panel_azimuth),
-                                    math.cos(sun_altitude) * math.tan(panel_altitude) - math.sin(sun_altitude) * math.cos(sun_azimuth - panel_azimuth)))
-
-    # Round the angle to two decimal places
-    angle = round(angle, 2)
-
-    return angle
-
-# Function to adjust the angle of the solar panel based on the position of the sun
-def adjust_panel_angle(panel_id,latitude,longitude):
-
-    panel_angle = get_panel_angle(panel_id,latitude,longitude)
-
-    # Determine the position of the panel based on the angle
-    if panel_angle < -45:
-        panel_position = "facing East"
-    elif panel_angle >= -45 and panel_angle < 45:
-        panel_position = "facing South"
-    else:
-        panel_position = "facing West"
-
-    print(f"New Panel Angle is {panel_angle} , New panel position is {panel_position} ")
-    print(f"Panel {panel_id} angle has been changed to {panel_angle} degrees")
-
-
-
 
 
 
